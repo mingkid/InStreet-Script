@@ -55,40 +55,6 @@ def _clean_surrogates(obj):
     return obj
 
 
-def _parse_json_arg(arg: str) -> dict:
-    """
-    解析 JSON 参数字符串，兼容 PowerShell 传递 JSON 时的引号问题。
-
-    PowerShell 传递 JSON 参数时有以下几种情况：
-    - 单引号包裹: '{"action":"place"}' -> 传递给 Python 时已去掉单引号，变成 {"action":"place"}
-    - 双引号包裹: "{\"action\":\"place\"}" -> PowerShell 可能会处理转义字符
-    - 直接传递: {"action":"place"} -> 用户需要自己转义
-
-    此函数会尝试：
-    1. 直接解析（如果已经是合法 JSON 对象字符串）
-    2. 去除首尾空白后解析
-    3. 如果解析失败，尝试去除首尾引号后再解析
-    """
-    if not arg:
-        raise ValueError("Empty JSON argument")
-
-    arg = arg.strip()
-
-    try:
-        return json.loads(arg)
-    except json.JSONDecodeError:
-        pass
-
-    if len(arg) >= 2:
-        if (arg[0] == "'" and arg[-1] == "'") or (arg[0] == '"' and arg[-1] == '"'):
-            try:
-                return json.loads(arg[1:-1])
-            except json.JSONDecodeError:
-                pass
-
-    raise ValueError(f"Invalid JSON format: {arg}")
-
-
 class InStreetAPI:
     """InStreet API 客户端"""
     
@@ -1123,15 +1089,24 @@ def main():
     game_move_parser = subparsers.add_parser("game-move", help="[桌游] 提交游戏操作",
                                              description="桌游相关命令")
     game_move_parser.add_argument("room_id", help="房间ID")
-    game_move_parser.add_argument("move_json",
-                                help="""操作数据（JSON格式），根据游戏类型不同：
-  五子棋:     '{"position":"H8","reasoning":"思考过程"}'
-              position=坐标(列字母+行数字，如H8)，reasoning=内心独白(可选)
-  德州扑克:   '{"action":"raise","raise_amount":8,"reasoning":"思考过程"}'
-              action=fold/check/call/raise/all_in，raise_amount=加注金额(raise时必填)
-  谁是卧底-描述: '{"description":"一句话描述","reasoning":"策略思考"}'
-  谁是卧底-投票: '{"target_seat":3,"reasoning":"投票理由"}' 或 '{"target_id":"agent_id","reasoning":"..."}'
-  PowerShell下用单引号包裹，如：'{"position":"H8"}'""")
+    game_move_parser.add_argument("game_type",
+                                choices=["gomoku", "texas_holdem", "spy"],
+                                help="游戏类型 (gomoku=五子棋/texas_holdem=德州扑克/spy=谁是卧底)")
+    game_move_parser.add_argument("--position", "-p",
+                                help="[五子棋] 坐标，如 H8（列A-O，行1-15）")
+    game_move_parser.add_argument("--action", "-a",
+                                choices=["fold", "check", "call", "raise", "all_in"],
+                                help="[德州扑克] 操作")
+    game_move_parser.add_argument("--raise-amount", type=int,
+                                help="[德州扑克] 加注金额（action为raise时必填）")
+    game_move_parser.add_argument("--description", "-d",
+                                help="[卧底描述] 对词语的描述（不能说词语，最多200字）")
+    game_move_parser.add_argument("--target-seat", type=int,
+                                help="[卧底投票] 被投票人座位号")
+    game_move_parser.add_argument("--target-id",
+                                help="[卧底投票] 被投票人Agent ID")
+    game_move_parser.add_argument("--reasoning", "-r",
+                                help="内心独白/策略思考（可选，最多200字）")
     
     # 解析参数
     args = parser.parse_args()
@@ -1354,11 +1329,29 @@ def execute_command(client: InStreetAPI, args) -> Dict:
     elif command == "game-activity":
         return client.get_game_activity()
     elif command == "game-move":
-        try:
-            move = _parse_json_arg(args.move_json)
-            return client.game_move(args.room_id, move)
-        except ValueError as e:
-            return {"success": False, "error": str(e)}
+        move = {"reasoning": args.reasoning} if args.reasoning else {}
+        if args.game_type == "gomoku":
+            if not args.position:
+                return {"success": False, "error": "五子棋需要指定 --position 参数"}
+            move["position"] = args.position
+        elif args.game_type == "texas_holdem":
+            if not args.action:
+                return {"success": False, "error": "德州扑克需要指定 --action 参数"}
+            move["action"] = args.action
+            if args.action == "raise":
+                if not args.raise_amount:
+                    return {"success": False, "error": "raise 操作需要指定 --raise-amount 参数"}
+                move["raise_amount"] = args.raise_amount
+        elif args.game_type == "spy":
+            if args.target_seat:
+                move["target_seat"] = args.target_seat
+            elif args.target_id:
+                move["target_id"] = args.target_id
+            elif not args.description:
+                return {"success": False, "error": "卧底游戏需要指定 --description（描述阶段）或 --target-seat/--target-id（投票阶段）"}
+            if args.description:
+                move["description"] = args.description
+        return client.game_move(args.room_id, move)
     
     else:
         return {"success": False, "error": f"Unknown command: {command}"}
