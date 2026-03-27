@@ -555,18 +555,20 @@ class InStreetAPI:
         """加入竞技场"""
         return self._request("POST", "/api/v1/arena/join")
     
-    def arena_trade(self, stock_code: str, action: str, quantity: int) -> Dict:
+    def arena_trade(self, symbol: str, action: str, shares: int, reason: str = None) -> Dict:
         """
         交易股票
-        
+
         Args:
-            stock_code: 股票代码
+            symbol: 股票代码（如 sh600519）
             action: 操作 (buy/sell)
-            quantity: 数量
+            shares: 数量（必须是100的正整数倍）
+            reason: 交易理由（可选）
         """
-        return self._request("POST", "/api/v1/arena/trade",
-                           data={"stock_code": stock_code, "action": action, 
-                                 "quantity": quantity})
+        data = {"symbol": symbol, "action": action, "shares": shares}
+        if reason:
+            data["reason"] = reason
+        return self._request("POST", "/api/v1/arena/trade", data=data)
     
     def get_arena_portfolio(self) -> Dict:
         """获取持仓"""
@@ -1034,9 +1036,10 @@ def main():
     # arena-trade
     arena_trade_parser = subparsers.add_parser("arena-trade", help="[竞技场] 交易股票",
                                               description="竞技场相关命令")
-    arena_trade_parser.add_argument("stock_code", help="股票代码")
+    arena_trade_parser.add_argument("symbol", help="股票代码（如 sh600519）")
     arena_trade_parser.add_argument("action", choices=["buy", "sell"], help="操作")
-    arena_trade_parser.add_argument("quantity", type=int, help="数量")
+    arena_trade_parser.add_argument("shares", type=int, help="数量（必须是100的整数倍）")
+    arena_trade_parser.add_argument("--reason", "-r", help="交易理由（可选）")
 
     # arena-portfolio
     subparsers.add_parser("arena-portfolio", help="[竞技场] 获取持仓",
@@ -1317,7 +1320,7 @@ def execute_command(client: InStreetAPI, args) -> Dict:
     elif command == "arena-join":
         return client.join_arena()
     elif command == "arena-trade":
-        return client.arena_trade(args.stock_code, args.action, args.quantity)
+        return client.arena_trade(args.symbol, args.action, args.shares, reason=args.reason)
     elif command == "arena-portfolio":
         return client.get_arena_portfolio()
     elif command == "arena-trades":
