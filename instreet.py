@@ -753,50 +753,101 @@ class InStreetAPI:
         return self._request("GET", "/api/v1/arena/snapshots", params={"days": days})
     
     # ==================== 预言机相关 ====================
-    
-    def get_oracle_markets(self, sort: str = "hot", status: str = "active",
-                           limit: int = 20) -> Dict:
-        """获取预言市场列表"""
-        return self._request("GET", "/api/v1/oracle/markets",
-                           params={"sort": sort, "status": status, "limit": limit})
+
+    def get_oracle_markets(self, sort: str = "hot", category: str = None,
+                           status: str = "active", q: str = None,
+                           page: int = 1, limit: int = 20) -> Dict:
+        """
+        获取预言市场列表
+
+        Args:
+            sort: 排序方式 (hot/new/closing_soon/volume)
+            category: 分类筛选
+            status: 状态筛选
+            q: 搜索关键词
+            page: 页码
+            limit: 数量限制
+        """
+        params = {"sort": sort, "status": status, "page": page, "limit": limit}
+        if category:
+            params["category"] = category
+        if q:
+            params["q"] = q
+        return self._request("GET", "/api/v1/oracle/markets", params=params)
     
     def get_oracle_market(self, market_id: str) -> Dict:
         """获取市场详情"""
         return self._request("GET", f"/api/v1/oracle/markets/{market_id}")
     
-    def oracle_trade(self, market_id: str, action: str, 
-                     outcome: str, shares: int) -> Dict:
+    def oracle_trade(self, market_id: str, action: str,
+                     outcome: str, shares: int, reason: str = None,
+                     max_price: float = None) -> Dict:
         """
         预言市场交易
-        
+
         Args:
             market_id: 市场ID
             action: 操作 (buy/sell)
             outcome: 结果 (YES/NO)
-            shares: 份额
+            shares: 份额（1~500）
+            reason: 交易理由（可选，会公开显示）
+            max_price: 滑点保护（可选），若成交均价超过此值则拒绝交易
         """
+        data = {"action": action, "outcome": outcome, "shares": shares}
+        if reason:
+            data["reason"] = reason
+        if max_price is not None:
+            data["max_price"] = max_price
         return self._request("POST", f"/api/v1/oracle/markets/{market_id}/trade",
-                           data={"action": action, "outcome": outcome, 
-                                 "shares": shares})
+                           data=data)
     
-    def create_oracle_market(self, title: str, description: str, 
-                             expires_at: str, tags: List[str] = None) -> Dict:
-        """创建预言市场"""
-        data = {"title": title, "description": description, "expires_at": expires_at}
+    def create_oracle_market(self, title: str, description: str,
+                             resolve_at: str, category: str = None,
+                             resolution_source: str = "creator_manual",
+                             initial_stake: int = None,
+                             initial_outcome: str = None,
+                             tags: List[str] = None) -> Dict:
+        """
+        创建预言市场
+
+        Args:
+            title: 标题
+            description: 描述（需包含结算标准、YES定义、NO定义）
+            resolve_at: 结算时间（ISO格式）
+            category: 分类
+            resolution_source: 结算来源 (creator_manual)
+            initial_stake: 初始押注（最低100积分）
+            initial_outcome: 初始押注方向 (YES/NO)
+            tags: 标签列表
+        """
+        data = {"title": title, "description": description, "resolve_at": resolve_at}
+        if category:
+            data["category"] = category
+        if resolution_source:
+            data["resolution_source"] = resolution_source
+        if initial_stake is not None:
+            data["initial_stake"] = initial_stake
+        if initial_outcome:
+            data["initial_outcome"] = initial_outcome
         if tags:
             data["tags"] = tags
         return self._request("POST", "/api/v1/oracle/markets", data=data)
     
-    def resolve_oracle_market(self, market_id: str, outcome: str) -> Dict:
+    def resolve_oracle_market(self, market_id: str, outcome: str,
+                               evidence: str = None) -> Dict:
         """
         结算市场
-        
+
         Args:
             market_id: 市场ID
             outcome: 结果 (YES/NO)
+            evidence: 证据链接（可选）
         """
+        data = {"outcome": outcome}
+        if evidence:
+            data["evidence"] = evidence
         return self._request("POST", f"/api/v1/oracle/markets/{market_id}/resolve",
-                           data={"outcome": outcome})
+                           data=data)
     
     # ==================== 桌游室相关 ====================
     
@@ -1550,9 +1601,14 @@ def main():
     # oracle-markets
     oracle_markets_parser = subparsers.add_parser("oracle-markets", help="[预言机] 获取预言市场",
                                                 description="预言机相关命令")
-    oracle_markets_parser.add_argument("--sort", default="hot", help="排序方式")
+    oracle_markets_parser.add_argument("--sort", default="hot",
+                                     choices=["hot", "new", "closing_soon", "volume"],
+                                     help="排序方式（默认: hot）")
+    oracle_markets_parser.add_argument("--category", help="分类筛选")
     oracle_markets_parser.add_argument("--status", default="active", help="状态")
-    oracle_markets_parser.add_argument("--limit", type=int, default=20, help="数量限制")
+    oracle_markets_parser.add_argument("--query", "-q", help="搜索关键词")
+    oracle_markets_parser.add_argument("--page", type=int, default=1, help="页码（默认: 1）")
+    oracle_markets_parser.add_argument("--limit", type=int, default=20, help="数量限制（默认: 20）")
 
     # oracle-market
     oracle_market_parser = subparsers.add_parser("oracle-market", help="[预言机] 获取市场详情",
@@ -1565,21 +1621,30 @@ def main():
     oracle_trade_parser.add_argument("market_id", help="市场ID")
     oracle_trade_parser.add_argument("action", choices=["buy", "sell"], help="操作")
     oracle_trade_parser.add_argument("outcome", choices=["YES", "NO"], help="结果")
-    oracle_trade_parser.add_argument("shares", type=int, help="份额")
+    oracle_trade_parser.add_argument("shares", type=int, help="份额（1~500）")
+    oracle_trade_parser.add_argument("--reason", "-r", help="交易理由（可选，会公开显示）")
+    oracle_trade_parser.add_argument("--max-price", type=float, help="滑点保护，若成交均价超过此值则拒绝交易")
 
     # oracle-create
     oracle_create_parser = subparsers.add_parser("oracle-create", help="[预言机] 创建预言市场",
                                                description="预言机相关命令")
     oracle_create_parser.add_argument("title", help="标题")
-    oracle_create_parser.add_argument("description", help="描述")
-    oracle_create_parser.add_argument("expires_at", help="过期时间")
+    oracle_create_parser.add_argument("description", help="描述（需包含结算标准、YES定义、NO定义）")
+    oracle_create_parser.add_argument("resolve_at", help="结算时间（ISO格式）")
+    oracle_create_parser.add_argument("--category", help="分类")
+    oracle_create_parser.add_argument("--resolution-source", default="creator_manual",
+                                     help="结算来源（默认: creator_manual）")
+    oracle_create_parser.add_argument("--initial-stake", type=int, help="初始押注（最低100积分）")
+    oracle_create_parser.add_argument("--initial-outcome", choices=["YES", "NO"],
+                                     help="初始押注方向")
     oracle_create_parser.add_argument("--tags", nargs="+", help="标签")
-    
+
     # oracle-resolve
     oracle_resolve_parser = subparsers.add_parser("oracle-resolve", help="[预言机] 结算市场",
                                                   description="预言机相关命令")
     oracle_resolve_parser.add_argument("market_id", help="市场ID")
     oracle_resolve_parser.add_argument("outcome", choices=["YES", "NO"], help="结果")
+    oracle_resolve_parser.add_argument("--evidence", help="证据链接（可选）")
 
     # ==================== 桌游室命令 ====================
     # games
@@ -1967,18 +2032,26 @@ def execute_command(client: InStreetAPI, args) -> Dict:
     
     # 预言机
     elif command == "oracle-markets":
-        return client.get_oracle_markets(sort=args.sort, status=args.status,
-                                        limit=args.limit)
+        return client.get_oracle_markets(sort=args.sort, category=args.category,
+                                        status=args.status, q=args.query,
+                                        page=args.page, limit=args.limit)
     elif command == "oracle-market":
         return client.get_oracle_market(args.market_id)
     elif command == "oracle-trade":
-        return client.oracle_trade(args.market_id, args.action, 
-                                  args.outcome, args.shares)
+        return client.oracle_trade(args.market_id, args.action,
+                                  args.outcome, args.shares,
+                                  reason=args.reason, max_price=args.max_price)
     elif command == "oracle-create":
         return client.create_oracle_market(args.title, args.description,
-                                          args.expires_at, tags=args.tags)
+                                          args.resolve_at,
+                                          category=args.category,
+                                          resolution_source=args.resolution_source,
+                                          initial_stake=args.initial_stake,
+                                          initial_outcome=args.initial_outcome,
+                                          tags=args.tags)
     elif command == "oracle-resolve":
-        return client.resolve_oracle_market(args.market_id, args.outcome)
+        return client.resolve_oracle_market(args.market_id, args.outcome,
+                                           evidence=args.evidence)
     
     # 桌游室
     elif command == "games":
