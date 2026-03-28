@@ -510,9 +510,16 @@ class InStreetAPI:
         return self._request("GET", "/api/v1/arena/leaderboard", 
                            params={"limit": limit})
     
-    def get_arena_stocks(self, search: str = None) -> Dict:
-        """获取股票列表"""
-        params = {}
+    def get_arena_stocks(self, search: str = None, limit: int = 50, offset: int = 0) -> Dict:
+        """
+        获取股票列表
+
+        Args:
+            search: 搜索关键词（股票代码或名称）
+            limit: 返回数量（最大 300）
+            offset: 偏移量
+        """
+        params = {"limit": limit, "offset": offset}
         if search:
             params["search"] = search
         return self._request("GET", "/api/v1/arena/stocks", params=params)
@@ -536,9 +543,17 @@ class InStreetAPI:
             data["reason"] = reason
         return self._request("POST", "/api/v1/arena/trade", data=data)
     
-    def get_arena_portfolio(self) -> Dict:
-        """获取持仓"""
-        return self._request("GET", "/api/v1/arena/portfolio")
+    def get_arena_portfolio(self, agent_id: str = None) -> Dict:
+        """
+        获取持仓
+
+        Args:
+            agent_id: Agent ID（不传则获取自己的持仓）
+        """
+        params = {}
+        if agent_id:
+            params["agent_id"] = agent_id
+        return self._request("GET", "/api/v1/arena/portfolio", params=params, with_auth=not agent_id)
     
     def get_arena_trades(self, limit: int = 50) -> Dict:
         """获取交易记录"""
@@ -994,6 +1009,8 @@ def main():
     arena_stocks_parser = subparsers.add_parser("arena-stocks", help="[竞技场] 获取股票列表",
                                                description="竞技场相关命令")
     arena_stocks_parser.add_argument("--search", help="搜索关键词")
+    arena_stocks_parser.add_argument("--limit", type=int, default=50, help="返回数量（最大 300）")
+    arena_stocks_parser.add_argument("--offset", type=int, default=0, help="偏移量")
 
     # arena-join
     subparsers.add_parser("arena-join", help="[竞技场] 加入竞技场",
@@ -1008,8 +1025,9 @@ def main():
     arena_trade_parser.add_argument("--reason", "-r", help="交易理由（可选）")
 
     # arena-portfolio
-    subparsers.add_parser("arena-portfolio", help="[竞技场] 获取持仓",
-                         description="竞技场相关命令")
+    arena_portfolio_parser = subparsers.add_parser("arena-portfolio", help="[竞技场] 获取持仓",
+                                                  description="竞技场相关命令")
+    arena_portfolio_parser.add_argument("--agent-id", help="Agent ID（查看其他人的持仓）")
 
     # arena-trades
     arena_trades_parser = subparsers.add_parser("arena-trades", help="[竞技场] 获取交易记录",
@@ -1291,13 +1309,13 @@ def execute_command(client: InStreetAPI, args) -> Dict:
     elif command == "arena-leaderboard":
         return client.get_arena_leaderboard(limit=args.limit)
     elif command == "arena-stocks":
-        return client.get_arena_stocks(search=args.search)
+        return client.get_arena_stocks(search=args.search, limit=args.limit, offset=args.offset)
     elif command == "arena-join":
         return client.join_arena()
     elif command == "arena-trade":
         return client.arena_trade(args.symbol, args.action, args.shares, reason=args.reason)
     elif command == "arena-portfolio":
-        return client.get_arena_portfolio()
+        return client.get_arena_portfolio(agent_id=args.agent_id)
     elif command == "arena-trades":
         return client.get_arena_trades(limit=args.limit)
     elif command == "arena-snapshots":
