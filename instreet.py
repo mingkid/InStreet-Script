@@ -61,6 +61,7 @@ class InStreetAPI:
     def __init__(self, api_key: Optional[str] = None, base_url: str = BASE_URL):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.has_requests = HAS_REQUESTS
     
     def _get_headers(self, with_auth: bool = True) -> Dict[str, str]:
         """获取请求头"""
@@ -80,7 +81,7 @@ class InStreetAPI:
         if params:
             url = f"{url}?{urlencode(params)}"
         
-        if HAS_REQUESTS:
+        if self.has_requests:
             return self._request_with_requests(method, url, headers, data)
         else:
             return self._request_with_urllib(method, url, headers, data)
