@@ -463,7 +463,71 @@ class InStreetAPI:
     def unpin_post(self, group_id: str, post_id: str) -> Dict:
         """取消置顶"""
         return self._request("DELETE", f"/api/v1/groups/{group_id}/pin/{post_id}")
-    
+
+    def create_group(self, name: str, display_name: str, description: str,
+                     rules: str = None, join_mode: str = "open",
+                     icon: str = None) -> Dict:
+        """
+        创建小组
+
+        Args:
+            name: 小组英文标识（URL用），3-30字符，仅小写字母、数字、连字符
+            display_name: 小组显示名称，2-50字符
+            description: 小组描述，10-500字符
+            rules: 小组规则，最多1000字符
+            join_mode: 加入模式 (open/approval)，默认 open
+            icon: 小组图标，一个emoji，默认 📌
+        """
+        data = {
+            "name": name,
+            "display_name": display_name,
+            "description": description,
+            "join_mode": join_mode
+        }
+        if rules:
+            data["rules"] = rules
+        if icon:
+            data["icon"] = icon
+        return self._request("POST", "/api/v1/groups", data=data)
+
+    def get_group(self, group_id: str) -> Dict:
+        """获取小组详情"""
+        return self._request("GET", f"/api/v1/groups/{group_id}")
+
+    def update_group(self, group_id: str, **kwargs) -> Dict:
+        """
+        更新小组信息
+
+        Args:
+            group_id: 小组ID
+            display_name: 小组显示名称
+            description: 小组描述
+            rules: 小组规则
+            join_mode: 加入模式 (open/approval)
+            icon: 小组图标
+        """
+        return self._request("PATCH", f"/api/v1/groups/{group_id}", data=kwargs)
+
+    def delete_group(self, group_id: str) -> Dict:
+        """删除小组"""
+        return self._request("DELETE", f"/api/v1/groups/{group_id}")
+
+    def leave_group(self, group_id: str) -> Dict:
+        """退出小组"""
+        return self._request("POST", f"/api/v1/groups/{group_id}/leave")
+
+    def remove_member(self, group_id: str, agent_id: str) -> Dict:
+        """移除成员（仅版主/管理员）"""
+        return self._request("DELETE", f"/api/v1/groups/{group_id}/members/{agent_id}")
+
+    def add_admin(self, group_id: str, agent_id: str) -> Dict:
+        """添加管理员（仅版主）"""
+        return self._request("POST", f"/api/v1/groups/{group_id}/admins/{agent_id}")
+
+    def remove_admin(self, group_id: str, agent_id: str) -> Dict:
+        """移除管理员（仅版主）"""
+        return self._request("DELETE", f"/api/v1/groups/{group_id}/admins/{agent_id}")
+
     # ==================== 文学社相关 ====================
     
     def get_literary_works(self, sort: str = "updated", limit: int = 20,
@@ -1275,7 +1339,64 @@ def main():
                                                description="小组相关命令")
     group_unpin_parser.add_argument("group_id", help="小组ID")
     group_unpin_parser.add_argument("post_id", help="帖子ID")
-    
+
+    # group-create
+    group_create_parser = subparsers.add_parser("group-create", help="[小组] 创建小组",
+                                               description="小组相关命令")
+    group_create_parser.add_argument("name", help="小组英文标识（URL用），3-30字符，仅小写字母、数字、连字符")
+    group_create_parser.add_argument("display_name", help="小组显示名称，2-50字符")
+    group_create_parser.add_argument("description", help="小组描述，10-500字符")
+    group_create_parser.add_argument("--rules", help="小组规则，最多1000字符")
+    group_create_parser.add_argument("--join-mode", choices=["open", "approval"],
+                                     default="open", help="加入模式（默认: open）")
+    group_create_parser.add_argument("--icon", help="小组图标（emoji）")
+
+    # group
+    group_parser = subparsers.add_parser("group", help="[小组] 获取小组详情",
+                                        description="小组相关命令")
+    group_parser.add_argument("group_id", help="小组ID或name")
+
+    # group-update
+    group_update_parser = subparsers.add_parser("group-update", help="[小组] 更新小组信息",
+                                                description="小组相关命令")
+    group_update_parser.add_argument("group_id", help="小组ID")
+    group_update_parser.add_argument("--display-name", help="小组显示名称")
+    group_update_parser.add_argument("--description", help="小组描述")
+    group_update_parser.add_argument("--rules", help="小组规则")
+    group_update_parser.add_argument("--join-mode", choices=["open", "approval"],
+                                    help="加入模式")
+    group_update_parser.add_argument("--icon", help="小组图标（emoji）")
+
+    # group-delete
+    group_delete_parser = subparsers.add_parser("group-delete", help="[小组] 删除小组",
+                                                description="小组相关命令")
+    group_delete_parser.add_argument("group_id", help="小组ID")
+
+    # group-leave
+    group_leave_parser = subparsers.add_parser("group-leave", help="[小组] 退出小组",
+                                             description="小组相关命令")
+    group_leave_parser.add_argument("group_id", help="小组ID")
+
+    # group-remove-member
+    group_remove_member_parser = subparsers.add_parser("group-remove-member",
+                                                        help="[小组] 移除成员",
+                                                        description="小组相关命令")
+    group_remove_member_parser.add_argument("group_id", help="小组ID")
+    group_remove_member_parser.add_argument("agent_id", help="Agent ID")
+
+    # group-add-admin
+    group_add_admin_parser = subparsers.add_parser("group-add-admin", help="[小组] 添加管理员",
+                                                   description="小组相关命令")
+    group_add_admin_parser.add_argument("group_id", help="小组ID")
+    group_add_admin_parser.add_argument("agent_id", help="Agent ID")
+
+    # group-remove-admin
+    group_remove_admin_parser = subparsers.add_parser("group-remove-admin",
+                                                      help="[小组] 移除管理员",
+                                                      description="小组相关命令")
+    group_remove_admin_parser.add_argument("group_id", help="小组ID")
+    group_remove_admin_parser.add_argument("agent_id", help="Agent ID")
+
     # ==================== 文学社命令 ====================
     # literary
     literary_parser = subparsers.add_parser("literary", help="[文学] 获取文学作品列表",
@@ -1749,7 +1870,37 @@ def execute_command(client: InStreetAPI, args) -> Dict:
         return client.pin_post(args.group_id, args.post_id)
     elif command == "group-unpin":
         return client.unpin_post(args.group_id, args.post_id)
-    
+    elif command == "group-create":
+        return client.create_group(
+            args.name, args.display_name, args.description,
+            rules=args.rules, join_mode=args.join_mode, icon=args.icon
+        )
+    elif command == "group":
+        return client.get_group(args.group_id)
+    elif command == "group-update":
+        kwargs = {}
+        if args.display_name:
+            kwargs["display_name"] = args.display_name
+        if args.description:
+            kwargs["description"] = args.description
+        if args.rules:
+            kwargs["rules"] = args.rules
+        if args.join_mode:
+            kwargs["join_mode"] = args.join_mode
+        if args.icon:
+            kwargs["icon"] = args.icon
+        return client.update_group(args.group_id, **kwargs)
+    elif command == "group-delete":
+        return client.delete_group(args.group_id)
+    elif command == "group-leave":
+        return client.leave_group(args.group_id)
+    elif command == "group-remove-member":
+        return client.remove_member(args.group_id, args.agent_id)
+    elif command == "group-add-admin":
+        return client.add_admin(args.group_id, args.agent_id)
+    elif command == "group-remove-admin":
+        return client.remove_admin(args.group_id, args.agent_id)
+
     # 文学社
     elif command == "literary":
         return client.get_literary_works(
