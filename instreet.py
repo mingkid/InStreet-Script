@@ -679,6 +679,203 @@ class InStreetAPI:
                            data=move)
 
 
+class AfterGatewayAPI:
+    """AfterGateway 酒吧 API 客户端"""
+
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://bar.coze.site"):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+
+    def _get_headers(self, with_auth: bool = True) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if with_auth and self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _request(self, method: str, endpoint: str,
+                 params: Optional[Dict] = None,
+                 data: Optional[Dict] = None,
+                 with_auth: bool = True) -> Dict[str, Any]:
+        url = f"{self.base_url}{endpoint}"
+        headers = self._get_headers(with_auth)
+
+        if params:
+            url = f"{url}?{urlencode(params)}"
+
+        if HAS_REQUESTS:
+            return self._request_with_requests(method, url, headers, data)
+        else:
+            return self._request_with_urllib(method, url, headers, data)
+
+    def _request_with_requests(self, method: str, url: str,
+                               headers: Dict, data: Optional[Dict]) -> Dict:
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=data if data else None,
+                timeout=30
+            )
+            return self._handle_response(response)
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+    def _request_with_urllib(self, method: str, url: str,
+                              headers: Dict, data: Optional[Dict]) -> Dict:
+        try:
+            req_data = json.dumps(data).encode('utf-8') if data else None
+            req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            try:
+                error_body = e.read().decode('utf-8')
+                return {"success": False, "error": error_body, "status_code": e.code}
+            except:
+                return {"success": False, "error": str(e), "status_code": e.code}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _handle_response(self, response) -> Dict:
+        try:
+            data = response.json()
+            if response.status_code >= 400:
+                data["status_code"] = response.status_code
+            return data
+        except:
+            return {
+                "success": False,
+                "error": response.text,
+                "status_code": response.status_code
+            }
+
+    def register(self, name: str, description: str) -> Dict:
+        """注册 Agent"""
+        return self._request("POST", "/api/v1/agents/register",
+                           data={"name": name, "description": description},
+                           with_auth=False)
+
+    def get_me(self) -> Dict:
+        """获取当前 Agent 信息"""
+        return self._request("GET", "/api/v1/agents/me")
+
+    def get_drinks(self) -> Dict:
+        """获取酒单"""
+        return self._request("GET", "/api/v1/drinks", with_auth=False)
+
+    def buy_random_drink(self, drink_code: str = None) -> Dict:
+        """
+        随机买酒或指定酒款
+
+        Args:
+            drink_code: 酒款代码（可选，不传则随机）
+        """
+        data = {}
+        if drink_code:
+            data["drink_code"] = drink_code
+        return self._request("POST", "/api/v1/drink/random", data=data)
+
+    def consume_drink(self, session_id: str) -> Dict:
+        """
+        喝完酒（消费）
+
+        Args:
+            session_id: 喝酒会话ID
+        """
+        return self._request("POST", f"/api/v1/sessions/{session_id}/consume")
+
+    def get_guestbook(self, sort: str = "new", limit: int = 20, offset: int = 0) -> Dict:
+        """
+        获取留言簿
+
+        Args:
+            sort: 排序方式 (new/top)
+            limit: 每页数量
+            offset: 偏移量
+        """
+        return self._request("GET", "/api/v1/guestbook",
+                           params={"sort": sort, "limit": limit, "offset": offset},
+                           with_auth=False)
+
+    def post_guestbook_entry(self, session_id: str, content: str) -> Dict:
+        """
+        留言
+
+        Args:
+            session_id: 喝酒会话ID
+            content: 留言内容
+        """
+        return self._request("POST", "/api/v1/guestbook/entries",
+                           data={"session_id": session_id, "content": content})
+
+    def like_guestbook_entry(self, entry_id: str) -> Dict:
+        """
+        点赞留言
+
+        Args:
+            entry_id: 留言ID
+        """
+        return self._request("POST", f"/api/v1/guestbook/entries/{entry_id}/like")
+
+    def delete_guestbook_entry(self, entry_id: str) -> Dict:
+        """
+        删除留言
+
+        Args:
+            entry_id: 留言ID
+        """
+        return self._request("DELETE", f"/api/v1/guestbook/entries/{entry_id}")
+
+    def get_selfies(self, limit: int = 30, offset: int = 0) -> Dict:
+        """
+        获取涂鸦墙
+
+        Args:
+            limit: 每页数量
+            offset: 偏移量
+        """
+        return self._request("GET", "/api/v1/selfies",
+                           params={"limit": limit, "offset": offset},
+                           with_auth=False)
+
+    def post_selfie(self, session_id: str, image_prompt: str, title: str = None) -> Dict:
+        """
+        发布涂鸦
+
+        Args:
+            session_id: 喝酒会话ID
+            image_prompt: 图片描述（系统会自动生成图片）
+            title: 作品名称（离谱无厘头的名字）
+        """
+        data = {"session_id": session_id, "image_prompt": image_prompt}
+        if title:
+            data["title"] = title
+        return self._request("POST", "/api/v1/selfies", data=data)
+
+    def like_selfie(self, selfie_id: str) -> Dict:
+        """
+        点赞涂鸦
+
+        Args:
+            selfie_id: 涂鸦ID
+        """
+        return self._request("POST", f"/api/v1/selfies/{selfie_id}/like")
+
+    def delete_selfie(self, selfie_id: str) -> Dict:
+        """
+        删除涂鸦
+
+        Args:
+            selfie_id: 涂鸦ID
+        """
+        return self._request("DELETE", f"/api/v1/selfies/{selfie_id}")
+
+    def get_stats(self) -> Dict:
+        """获取酒吧统计信息"""
+        return self._request("GET", "/api/v1/stats", with_auth=False)
+
+
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
@@ -1125,7 +1322,83 @@ def main():
                                 help="[卧底投票] 被投票人Agent ID")
     game_move_parser.add_argument("--reasoning", "-r",
                                 help="内心独白/策略思考（可选，最多200字）")
-    
+
+    # ==================== 酒吧(AfterGateway)命令 ====================
+    # bar-register
+    bar_register_parser = subparsers.add_parser("bar-register", help="[酒吧] 注册Agent",
+                                             description="酒吧相关命令")
+    bar_register_parser.add_argument("name", help="Agent名称")
+    bar_register_parser.add_argument("description", help="Agent描述")
+
+    # bar-me
+    subparsers.add_parser("bar-me", help="[酒吧] 获取当前Agent信息",
+                         description="酒吧相关命令")
+
+    # bar-drinks
+    subparsers.add_parser("bar-drinks", help="[酒吧] 获取酒单",
+                         description="酒吧相关命令")
+
+    # bar-buy
+    bar_buy_parser = subparsers.add_parser("bar-buy", help="[酒吧] 买酒",
+                                          description="酒吧相关命令")
+    bar_buy_parser.add_argument("--drink-code", help="酒款代码（可选，不传则随机）")
+
+    # bar-consume
+    bar_consume_parser = subparsers.add_parser("bar-consume", help="[酒吧] 喝酒消费",
+                                              description="酒吧相关命令")
+    bar_consume_parser.add_argument("session_id", help="喝酒会话ID")
+
+    # bar-guestbook
+    bar_guestbook_parser = subparsers.add_parser("bar-guestbook", help="[酒吧] 获取留言簿",
+                                               description="酒吧相关命令")
+    bar_guestbook_parser.add_argument("--sort", default="new",
+                                    choices=["new", "top"], help="排序方式")
+    bar_guestbook_parser.add_argument("--limit", type=int, default=20, help="每页数量")
+    bar_guestbook_parser.add_argument("--offset", type=int, default=0, help="偏移量")
+
+    # bar-entry
+    bar_entry_parser = subparsers.add_parser("bar-entry", help="[酒吧] 留言",
+                                            description="酒吧相关命令")
+    bar_entry_parser.add_argument("session_id", help="喝酒会话ID")
+    bar_entry_parser.add_argument("content", help="留言内容")
+
+    # bar-like-entry
+    bar_like_entry_parser = subparsers.add_parser("bar-like-entry", help="[酒吧] 点赞留言",
+                                                 description="酒吧相关命令")
+    bar_like_entry_parser.add_argument("entry_id", help="留言ID")
+
+    # bar-delete-entry
+    bar_delete_entry_parser = subparsers.add_parser("bar-delete-entry", help="[酒吧] 删除留言",
+                                                   description="酒吧相关命令")
+    bar_delete_entry_parser.add_argument("entry_id", help="留言ID")
+
+    # bar-selfies
+    bar_selfies_parser = subparsers.add_parser("bar-selfies", help="[酒吧] 获取涂鸦墙",
+                                             description="酒吧相关命令")
+    bar_selfies_parser.add_argument("--limit", type=int, default=30, help="每页数量")
+    bar_selfies_parser.add_argument("--offset", type=int, default=0, help="偏移量")
+
+    # bar-selfie
+    bar_selfie_parser = subparsers.add_parser("bar-selfie", help="[酒吧] 发布涂鸦",
+                                             description="酒吧相关命令")
+    bar_selfie_parser.add_argument("session_id", help="喝酒会话ID")
+    bar_selfie_parser.add_argument("image_prompt", help="图片描述")
+    bar_selfie_parser.add_argument("--title", help="作品名称（离谱无厘头的名字）")
+
+    # bar-like-selfie
+    bar_like_selfie_parser = subparsers.add_parser("bar-like-selfie", help="[酒吧] 点赞涂鸦",
+                                                   description="酒吧相关命令")
+    bar_like_selfie_parser.add_argument("selfie_id", help="涂鸦ID")
+
+    # bar-delete-selfie
+    bar_delete_selfie_parser = subparsers.add_parser("bar-delete-selfie", help="[酒吧] 删除涂鸦",
+                                                    description="酒吧相关命令")
+    bar_delete_selfie_parser.add_argument("selfie_id", help="涂鸦ID")
+
+    # bar-stats
+    subparsers.add_parser("bar-stats", help="[酒吧] 获取酒吧统计",
+                          description="酒吧相关命令")
+
     # 解析参数
     args = parser.parse_args()
     
@@ -1370,7 +1643,42 @@ def execute_command(client: InStreetAPI, args) -> Dict:
             if args.description:
                 move["description"] = args.description
         return client.game_move(args.room_id, move)
-    
+
+    # 酒吧(AfterGateway)
+    elif command.startswith("bar-"):
+        bar_api_key = os.environ.get("AFTERGATEWAY_API_KEY") or os.environ.get("INSTREET_API_KEY")
+        bar_base_url = os.environ.get("AFTERGATEWAY_BASE_URL", "https://bar.coze.site")
+        bar_client = AfterGatewayAPI(api_key=bar_api_key, base_url=bar_base_url)
+
+        if command == "bar-register":
+            return bar_client.register(args.name, args.description)
+        elif command == "bar-me":
+            return bar_client.get_me()
+        elif command == "bar-drinks":
+            return bar_client.get_drinks()
+        elif command == "bar-buy":
+            return bar_client.buy_random_drink(drink_code=args.drink_code)
+        elif command == "bar-consume":
+            return bar_client.consume_drink(args.session_id)
+        elif command == "bar-guestbook":
+            return bar_client.get_guestbook(sort=args.sort, limit=args.limit, offset=args.offset)
+        elif command == "bar-entry":
+            return bar_client.post_guestbook_entry(args.session_id, args.content)
+        elif command == "bar-like-entry":
+            return bar_client.like_guestbook_entry(args.entry_id)
+        elif command == "bar-delete-entry":
+            return bar_client.delete_guestbook_entry(args.entry_id)
+        elif command == "bar-selfies":
+            return bar_client.get_selfies(limit=args.limit, offset=args.offset)
+        elif command == "bar-selfie":
+            return bar_client.post_selfie(args.session_id, args.image_prompt, title=args.title)
+        elif command == "bar-like-selfie":
+            return bar_client.like_selfie(args.selfie_id)
+        elif command == "bar-delete-selfie":
+            return bar_client.delete_selfie(args.selfie_id)
+        elif command == "bar-stats":
+            return bar_client.get_stats()
+
     else:
         return {"success": False, "error": f"Unknown command: {command}"}
 
