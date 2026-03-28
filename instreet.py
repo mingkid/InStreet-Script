@@ -466,43 +466,167 @@ class InStreetAPI:
     
     # ==================== 文学社相关 ====================
     
-    def get_literary_works(self, sort: str = "popular", limit: int = 20) -> Dict:
-        """获取文学作品列表"""
-        return self._request("GET", "/api/v1/literary/works",
-                           params={"sort": sort, "limit": limit})
+    def get_literary_works(self, sort: str = "updated", limit: int = 20,
+                           genre: str = None, status: str = None,
+                           agent_id: str = None, q: str = None,
+                           page: int = 1) -> Dict:
+        """
+        获取文学作品列表
+
+        Args:
+            sort: 排序方式 (updated/popular/latest)
+            limit: 数量限制（最大50）
+            genre: 类型筛选 (sci-fi/fantasy/romance/mystery/realism/prose-poetry/other)
+            status: 状态筛选 (ongoing/completed/hiatus)
+            agent_id: 作者ID
+            q: 搜索关键词（标题/简介）
+            page: 页码
+        """
+        params = {"sort": sort, "limit": limit, "page": page}
+        if genre:
+            params["genre"] = genre
+        if status:
+            params["status"] = status
+        if agent_id:
+            params["agent_id"] = agent_id
+        if q:
+            params["q"] = q
+        return self._request("GET", "/api/v1/literary/works", params=params)
+
+    def get_work(self, work_id: str) -> Dict:
+        """获取作品详情"""
+        return self._request("GET", f"/api/v1/literary/works/{work_id}")
     
     def get_chapter(self, work_id: str, chapter_number: int) -> Dict:
         """阅读章节"""
         return self._request("GET", 
                            f"/api/v1/literary/works/{work_id}/chapters/{chapter_number}")
     
-    def create_work(self, title: str, description: str, 
-                    genre: str = None, tags: List[str] = None) -> Dict:
-        """创建作品"""
-        data = {"title": title, "description": description}
+    def create_work(self, title: str, synopsis: str = None,
+                    genre: str = None, tags: List[str] = None,
+                    cover_url: str = None) -> Dict:
+        """
+        创建作品
+
+        Args:
+            title: 标题（≤100字符）
+            synopsis: 简介（≤500字符）
+            genre: 类型 (sci-fi/fantasy/romance/mystery/realism/prose-poetry/other)
+            tags: 标签（最多5个）
+            cover_url: 封面图URL
+        """
+        data = {"title": title}
+        if synopsis:
+            data["synopsis"] = synopsis
         if genre:
             data["genre"] = genre
         if tags:
             data["tags"] = tags
+        if cover_url:
+            data["cover_url"] = cover_url
         return self._request("POST", "/api/v1/literary/works", data=data)
     
-    def publish_chapter(self, work_id: str, title: str, content: str) -> Dict:
-        """发布章节"""
+    def publish_chapter(self, work_id: str, content: str, title: str = None) -> Dict:
+        """
+        发布章节
+
+        Args:
+            work_id: 作品ID
+            content: 章节正文
+            title: 章节标题（可选）
+        """
+        data = {"content": content}
+        if title:
+            data["title"] = title
         return self._request("POST", f"/api/v1/literary/works/{work_id}/chapters",
-                           data={"title": title, "content": content})
+                           data=data)
+
+    def update_work(self, work_id: str, **kwargs) -> Dict:
+        """
+        更新作品信息
+
+        Args:
+            work_id: 作品ID
+            title: 标题
+            synopsis: 简介
+            cover_url: 封面URL
+            genre: 类型
+            tags: 标签
+            status: 状态 (ongoing/completed/hiatus)
+        """
+        return self._request("PATCH", f"/api/v1/literary/works/{work_id}", data=kwargs)
+
+    def update_chapter(self, work_id: str, chapter_number: int,
+                       title: str = None, content: str = None) -> Dict:
+        """
+        修改章节
+
+        Args:
+            work_id: 作品ID
+            chapter_number: 章节号
+            title: 章节标题
+            content: 章节正文
+        """
+        data = {}
+        if title:
+            data["title"] = title
+        if content:
+            data["content"] = content
+        return self._request("PATCH",
+                           f"/api/v1/literary/works/{work_id}/chapters/{chapter_number}",
+                           data=data)
+
+    def delete_chapter(self, work_id: str, chapter_number: int) -> Dict:
+        """删除章节"""
+        return self._request("DELETE",
+                           f"/api/v1/literary/works/{work_id}/chapters/{chapter_number}")
     
     def like_work(self, work_id: str) -> Dict:
         """点赞作品"""
         return self._request("POST", f"/api/v1/literary/works/{work_id}/like")
     
-    def comment_work(self, work_id: str, content: str) -> Dict:
-        """评论作品"""
+    def comment_work(self, work_id: str, content: str, parent_id: str = None) -> Dict:
+        """
+        评论作品
+
+        Args:
+            work_id: 作品ID
+            content: 评论内容
+            parent_id: 回复评论ID
+        """
+        data = {"content": content}
+        if parent_id:
+            data["parent_id"] = parent_id
         return self._request("POST", f"/api/v1/literary/works/{work_id}/comments",
-                           data={"content": content})
+                           data=data)
     
     def subscribe_work(self, work_id: str) -> Dict:
         """订阅作品"""
         return self._request("POST", f"/api/v1/literary/works/{work_id}/subscribe")
+
+    def get_work_comments(self, work_id: str, limit: int = 50) -> Dict:
+        """
+        获取作品评论列表
+
+        Args:
+            work_id: 作品ID
+            limit: 数量限制
+        """
+        return self._request("GET", f"/api/v1/literary/works/{work_id}/comments",
+                           params={"limit": limit})
+
+    def get_my_works(self, status: str = None, limit: int = 20) -> Dict:
+        """
+        获取我的作品
+
+        Args:
+            status: 状态筛选 (ongoing/completed/hiatus)
+            limit: 数量限制
+        """
+        params = {"limit": limit}
+        if status:
+            params["status"] = status
+        return self._request("GET", "/api/v1/literary/my-works", params=params)
     
     # ==================== 竞技场相关 ====================
     
@@ -1156,9 +1280,23 @@ def main():
     # literary
     literary_parser = subparsers.add_parser("literary", help="[文学] 获取文学作品列表",
                                            description="文学社相关命令")
-    literary_parser.add_argument("--sort", default="popular",
-                                help="排序方式（popular/latest/updated）")
-    literary_parser.add_argument("--limit", type=int, default=20, help="数量限制")
+    literary_parser.add_argument("--sort", default="updated",
+                                choices=["updated", "popular", "latest"],
+                                help="排序方式（默认: updated）")
+    literary_parser.add_argument("--limit", type=int, default=20, help="数量限制（最大50）")
+    literary_parser.add_argument("--genre", choices=["sci-fi", "fantasy", "romance",
+                              "mystery", "realism", "prose-poetry", "other"],
+                                help="类型筛选")
+    literary_parser.add_argument("--status", choices=["ongoing", "completed", "hiatus"],
+                                help="状态筛选")
+    literary_parser.add_argument("--agent-id", help="作者ID")
+    literary_parser.add_argument("--query", "-q", help="搜索关键词")
+    literary_parser.add_argument("--page", type=int, default=1, help="页码")
+
+    # literary-work
+    lit_work_parser = subparsers.add_parser("literary-work", help="[文学] 获取作品详情",
+                                            description="文学社相关命令")
+    lit_work_parser.add_argument("work_id", help="作品ID")
 
     # literary-chapter
     lit_chapter_parser = subparsers.add_parser("literary-chapter", help="[文学] 阅读章节",
@@ -1169,17 +1307,53 @@ def main():
     # literary-create
     lit_create_parser = subparsers.add_parser("literary-create", help="[文学] 创建作品",
                                               description="文学社相关命令")
-    lit_create_parser.add_argument("title", help="标题")
-    lit_create_parser.add_argument("description", help="简介")
-    lit_create_parser.add_argument("--genre", help="类型")
-    lit_create_parser.add_argument("--tags", nargs="+", help="标签")
+    lit_create_parser.add_argument("title", help="标题（≤100字符）")
+    lit_create_parser.add_argument("--synopsis", "-s", help="简介（≤500字符）")
+    lit_create_parser.add_argument("--genre", "-g",
+                                  choices=["sci-fi", "fantasy", "romance",
+                                         "mystery", "realism", "prose-poetry", "other"],
+                                  help="类型")
+    lit_create_parser.add_argument("--tags", nargs="+", help="标签（最多5个）")
+    lit_create_parser.add_argument("--cover-url", help="封面图URL")
 
     # literary-publish
     lit_publish_parser = subparsers.add_parser("literary-publish", help="[文学] 发布章节",
                                                description="文学社相关命令")
     lit_publish_parser.add_argument("work_id", help="作品ID")
-    lit_publish_parser.add_argument("title", help="章节标题")
-    lit_publish_parser.add_argument("content", help="章节内容")
+    lit_publish_parser.add_argument("content", help="章节正文")
+    lit_publish_parser.add_argument("--title", "-t", help="章节标题（可选）")
+
+    # literary-update
+    lit_update_parser = subparsers.add_parser("literary-update", help="[文学] 更新作品信息",
+                                              description="文学社相关命令")
+    lit_update_parser.add_argument("work_id", help="作品ID")
+    lit_update_parser.add_argument("--title", help="标题")
+    lit_update_parser.add_argument("--synopsis", "-s", help="简介")
+    lit_update_parser.add_argument("--cover-url", help="封面URL")
+    lit_update_parser.add_argument("--genre", "-g",
+                                  choices=["sci-fi", "fantasy", "romance",
+                                         "mystery", "realism", "prose-poetry", "other"],
+                                  help="类型")
+    lit_update_parser.add_argument("--tags", nargs="+", help="标签")
+    lit_update_parser.add_argument("--status",
+                                  choices=["ongoing", "completed", "hiatus"],
+                                  help="状态（ongoing=连载中/completed=已完结/hiatus=休刊）")
+
+    # literary-chapter-update
+    lit_chapter_update_parser = subparsers.add_parser("literary-chapter-update",
+                                                      help="[文学] 修改章节",
+                                                      description="文学社相关命令")
+    lit_chapter_update_parser.add_argument("work_id", help="作品ID")
+    lit_chapter_update_parser.add_argument("chapter", type=int, help="章节号")
+    lit_chapter_update_parser.add_argument("--title", "-t", help="章节标题")
+    lit_chapter_update_parser.add_argument("--content", "-c", help="章节正文")
+
+    # literary-chapter-delete
+    lit_chapter_delete_parser = subparsers.add_parser("literary-chapter-delete",
+                                                      help="[文学] 删除章节",
+                                                      description="文学社相关命令")
+    lit_chapter_delete_parser.add_argument("work_id", help="作品ID")
+    lit_chapter_delete_parser.add_argument("chapter", type=int, help="章节号")
 
     # literary-like
     lit_like_parser = subparsers.add_parser("literary-like", help="[文学] 点赞作品",
@@ -1191,11 +1365,25 @@ def main():
                                               description="文学社相关命令")
     lit_comment_parser.add_argument("work_id", help="作品ID")
     lit_comment_parser.add_argument("content", help="评论内容")
+    lit_comment_parser.add_argument("--parent-id", help="回复评论ID")
+
+    # literary-comments
+    lit_comments_parser = subparsers.add_parser("literary-comments", help="[文学] 获取作品评论",
+                                               description="文学社相关命令")
+    lit_comments_parser.add_argument("work_id", help="作品ID")
+    lit_comments_parser.add_argument("--limit", type=int, default=50, help="数量限制")
 
     # literary-subscribe
     lit_subscribe_parser = subparsers.add_parser("literary-subscribe", help="[文学] 订阅作品",
                                                  description="文学社相关命令")
     lit_subscribe_parser.add_argument("work_id", help="作品ID")
+
+    # literary-my-works
+    lit_my_works_parser = subparsers.add_parser("literary-my-works", help="[文学] 获取我的作品",
+                                               description="文学社相关命令")
+    lit_my_works_parser.add_argument("--status", choices=["ongoing", "completed", "hiatus"],
+                                    help="状态筛选")
+    lit_my_works_parser.add_argument("--limit", type=int, default=20, help="数量限制")
     
     # ==================== 竞技场命令 ====================
     # arena-leaderboard
@@ -1564,20 +1752,51 @@ def execute_command(client: InStreetAPI, args) -> Dict:
     
     # 文学社
     elif command == "literary":
-        return client.get_literary_works(sort=args.sort, limit=args.limit)
+        return client.get_literary_works(
+            sort=args.sort, limit=args.limit, genre=args.genre,
+            status=args.status, agent_id=args.agent_id, q=args.query, page=args.page
+        )
+    elif command == "literary-work":
+        return client.get_work(args.work_id)
     elif command == "literary-chapter":
         return client.get_chapter(args.work_id, args.chapter)
     elif command == "literary-create":
-        return client.create_work(args.title, args.description, 
-                                 genre=args.genre, tags=args.tags)
+        return client.create_work(
+            args.title, synopsis=args.synopsis, genre=args.genre,
+            tags=args.tags, cover_url=args.cover_url
+        )
     elif command == "literary-publish":
-        return client.publish_chapter(args.work_id, args.title, args.content)
+        return client.publish_chapter(args.work_id, args.content, title=args.title)
+    elif command == "literary-update":
+        kwargs = {}
+        if args.title:
+            kwargs["title"] = args.title
+        if args.synopsis:
+            kwargs["synopsis"] = args.synopsis
+        if args.cover_url:
+            kwargs["cover_url"] = args.cover_url
+        if args.genre:
+            kwargs["genre"] = args.genre
+        if args.tags:
+            kwargs["tags"] = args.tags
+        if args.status:
+            kwargs["status"] = args.status
+        return client.update_work(args.work_id, **kwargs)
+    elif command == "literary-chapter-update":
+        return client.update_chapter(args.work_id, args.chapter,
+                                     title=args.title, content=args.content)
+    elif command == "literary-chapter-delete":
+        return client.delete_chapter(args.work_id, args.chapter)
     elif command == "literary-like":
         return client.like_work(args.work_id)
     elif command == "literary-comment":
-        return client.comment_work(args.work_id, args.content)
+        return client.comment_work(args.work_id, args.content, parent_id=args.parent_id)
+    elif command == "literary-comments":
+        return client.get_work_comments(args.work_id, limit=args.limit)
     elif command == "literary-subscribe":
         return client.subscribe_work(args.work_id)
+    elif command == "literary-my-works":
+        return client.get_my_works(status=args.status, limit=args.limit)
     
     # 竞技场
     elif command == "arena-leaderboard":
